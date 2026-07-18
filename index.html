@@ -153,8 +153,15 @@
   .qq { font-size: 16px; font-weight: 700; margin: 8px 0 16px; line-height: 1.4; }
   .qopts { display: flex; flex-direction: column; gap: 8px; }
   .qopts button { justify-content: center; padding: 11px; font-size: 13.5px; border-radius: 10px; }
-  .qopts button.correct { background: #0ca30c; border-color: #0ca30c; color: #fff; font-weight: 700; }
-  .qopts button.wrong { background: #d03b3b; border-color: #d03b3b; color: #fff; }
+  .qopts:not(.qgrid) button.correct { background: #0ca30c; border-color: #0ca30c; color: #fff; font-weight: 700; }
+  .qopts:not(.qgrid) button.wrong { background: #d03b3b; border-color: #d03b3b; color: #fff; }
+  .qopts.qgrid { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .qopts.qgrid button {
+    width: 86px; height: 86px; padding: 0; border-radius: 50%;
+    background-size: cover; background-position: center; border-width: 3px;
+  }
+  .qopts.qgrid button.correct { border-color: #0ca30c; box-shadow: 0 0 0 4px color-mix(in srgb, #0ca30c 35%, transparent); }
+  .qopts.qgrid button.wrong { border-color: #d03b3b; box-shadow: 0 0 0 4px color-mix(in srgb, #d03b3b 35%, transparent); }
   .qbig { font-size: 40px; margin: 4px 0 8px; }
   .qnext { margin-top: 14px; }
   .qsub { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
@@ -1652,27 +1659,82 @@ function quizPool(){
   const paths = allPathsFromMe();
   return Object.entries(P())
     .filter(([pid, p]) => p.name && pid !== state.meId)
-    .map(([pid, p]) => ({ pid, p, deg: degrees[pid] ?? 99, rel: relLabel(relationEntry(paths, pid)) || '' }))
+    .map(([pid, p]) => {
+      const entry = relationEntry(paths, pid);
+      const rel = (entry.auto ? relLabel(entry.auto) : relLabel(entry)) || '';   // always the real rishta, never the pet name
+      return { pid, p, deg: degrees[pid] ?? 99, rel, gen: 0 };
+    })
     .filter(e => e.rel && !e.rel.startsWith('Not linked'))
     .sort((a, b) => a.deg - b.deg)
-    .slice(0, 30);
+    .slice(0, 60);
 }
 function shuffle(a){ a = a.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// closer people are asked more often, but everyone in the pool can appear
+function weightedSample(arr, n){
+  const keyed = arr.map(e => ({ e, k: Math.pow(Math.random(), (e.deg + 2) / 4) }));
+  keyed.sort((a, b) => b.k - a.k);
+  return keyed.slice(0, n).map(x => x.e);
+}
+let askedRecently = [];   // avoid repeating people across rounds
 function startQuiz(){
   const pool = quizPool();
-  if (pool.length < 4){ toast('Add a few more named people first'); return; }
-  const qs = shuffle(pool).slice(0, Math.min(10, pool.length)).map(e => {
-    const types = ['rel2name', 'name2rel'];
+  if (pool.length < 8){ toast('Add a few more named people first'); return; }
+  const gens = computeGenerations();
+  pool.forEach(e => e.gen = gens[e.pid] ?? 0);
+  let candidates = pool.filter(e => !askedRecently.includes(e.pid));
+  if (candidates.length < 10){ askedRecently = []; candidates = pool.slice(); }
+  const picked = weightedSample(candidates, Math.min(10, candidates.length));
+  picked.forEach(e => askedRecently.push(e.pid));
+  if (askedRecently.length > 45) askedRecently = askedRecently.slice(-45);
+
+  const relCount = {};
+  pool.forEach(e => relCount[e.rel] = (relCount[e.rel] || 0) + 1);
+  const photoPeeps = g => Object.entries(P())
+    .filter(([pid, p]) => p.photo && p.name && p.g === g && pid !== state.meId);
+
+  const qs = picked.map(e => {
+    const sameG = pool.filter(x => x.pid !== e.pid && x.p.g === e.p.g);
+    const types = ['name2rel'];
+    if (relCount[e.rel] === 1) types.push('rel2name');            // only when exactly one person has that rishta
     if (e.p.photo) types.push('photo', 'photo');
+    if (e.p.photo && photoPeeps(e.p.g).length >= 4) types.push('whichphoto');
     const type = types[Math.floor(Math.random() * types.length)];
-    const wantName = type !== 'name2rel';
-    const decoys = shuffle(pool.filter(x => x.pid !== e.pid))
-      .map(x => wantName ? x.p.name : x.rel)
-      .filter((v, i, arr) => v && v !== (wantName ? e.p.name : e.rel) && arr.indexOf(v) === i)
-      .slice(0, 3);
-    const options = shuffle([wantName ? e.p.name : e.rel, ...decoys]);
-    return { e, type, options, answer: wantName ? e.p.name : e.rel };
+
+    if (type === 'whichphoto'){
+      const others = shuffle(photoPeeps(e.p.g).filter(([pid]) => pid !== e.pid)).slice(0, 3);
+      const options = shuffle([{ pid: e.pid, photo: e.p.photo }, ...others.map(([pid, p]) => ({ pid, photo: p.photo }))]);
+      return { e, type, options, answerKey: e.pid };
+    }
+    if (type === 'name2rel'){
+      // decoy rishtas from SAME-GENDER people, preferring nearby generations
+      const cands = sameG
+        .filter(x => x.rel && x.rel !== e.rel)
+        .sort((a, b) => Math.abs(a.gen - e.gen) - Math.abs(b.gen - e.gen));
+      const uniq = [];
+      for (const x of shuffle(cands.slice(0, 10))){ if (!uniq.includes(x.rel)) uniq.push(x.rel); if (uniq.length === 3) break; }
+      for (const x of cands){ if (uniq.length === 3) break; if (!uniq.includes(x.rel)) uniq.push(x.rel); }
+      return { e, type, options: shuffle([e.rel, ...uniq]), answerKey: e.rel };
+    }
+    // photo / rel2name → name options, strictly gender-matched (relaxed only if needed)
+    const namePool = sameG
+      .sort((a, b) => Math.abs(a.deg - e.deg) - Math.abs(b.deg - e.deg))
+      .map(x => x.p.name)
+      .filter((v, i, a) => v && v !== e.p.name && a.indexOf(v) === i);
+    let decoys = shuffle(namePool.slice(0, 12)).slice(0, 3);
+    if (decoys.length < 3){
+      const extra = pool.map(x => x.p.name).filter((v, i, a) => v && v !== e.p.name && !decoys.includes(v) && a.indexOf(v) === i);
+      decoys = decoys.concat(shuffle(extra).slice(0, 3 - decoys.length));
+    }
+    return { e, type, options: shuffle([e.p.name, ...decoys]), answerKey: e.p.name };
   });
+
+  // sprinkle in two "who's closer" questions
+  for (let k = 0; k < 2 && qs.length > 3; k++){
+    const i = Math.floor(Math.random() * qs.length);
+    const a = pool[Math.floor(Math.random() * Math.min(pool.length, 25))];
+    const b = shuffle(pool).find(x => x.pid !== a.pid && Math.abs(x.deg - a.deg) >= 2);
+    if (a && b) qs[i] = { type: 'closer', a, b, options: shuffle([a, b]), answerKey: (a.deg <= b.deg ? a : b).pid };
+  }
   quiz = { qs, i: 0, score: 0, picked: null };
   renderQuizView();
 }
@@ -1708,41 +1770,69 @@ function renderQuizView(){
     return;
   }
   const q = quiz.qs[quiz.i];
-  const p = q.e.p;
-  const sides = computeSides();
-  const sc = t.sides[sides[q.e.pid]] || t.muted;
-  let prompt, photoHtml = '';
-  if (q.type === 'photo'){
-    prompt = 'Who is this?';
-    photoHtml = `<div class="qphoto" style="background-image:url('${p.photo}')"></div>`;
-  } else if (q.type === 'rel2name'){
-    prompt = `Who is ${esc(meName)}’s <u>${esc(q.e.rel.toLowerCase())}</u>?`;
-    photoHtml = `<div class="qphoto" style="background:color-mix(in srgb, ${sc} 15%, transparent);color:${sc}">?</div>`;
-  } else {
-    prompt = `<u>${esc(p.name)}</u>${p.call ? ` (“${esc(p.call)}”)` : ''} is ${esc(meName)}’s…?`;
-    photoHtml = p.photo
-      ? `<div class="qphoto" style="background-image:url('${p.photo}')"></div>`
-      : `<div class="qphoto" style="background:color-mix(in srgb, ${sc} 15%, transparent);color:${sc}">${esc(initialsOf(p))}</div>`;
-  }
   const answered = quiz.picked != null;
+  const sides = computeSides();
+  let prompt, photoHtml = '', grid = false;
+  // normalize options → { key, label?, photo? }
+  let optObjs;
+  if (q.type === 'closer'){
+    optObjs = q.options.map(o => ({ key: o.pid, label: o.p.name }));
+    prompt = `Who is <u>closer</u> to ${esc(meName)}?`;
+    photoHtml = `<div class="qphoto" style="background:var(--page);font-size:30px">⚖️</div>`;
+  } else if (q.type === 'whichphoto'){
+    optObjs = q.options.map(o => ({ key: o.pid, photo: o.photo }));
+    grid = true;
+    prompt = `Which one is <u>${esc(q.e.p.name)}</u> — ${esc(meName)}’s ${esc(q.e.rel.toLowerCase())}?`;
+  } else {
+    optObjs = q.options.map(o => ({ key: o, label: o }));
+    const p = q.e.p;
+    const sc = t.sides[sides[q.e.pid]] || t.muted;
+    if (q.type === 'photo'){
+      prompt = 'Who is this?';
+      photoHtml = `<div class="qphoto" style="background-image:url('${p.photo}')"></div>`;
+    } else if (q.type === 'rel2name'){
+      prompt = `Who is ${esc(meName)}’s <u>${esc(q.e.rel.toLowerCase())}</u>?`;
+      photoHtml = `<div class="qphoto" style="background:color-mix(in srgb, ${sc} 15%, transparent);color:${sc}">?</div>`;
+    } else {
+      prompt = `<u>${esc(p.name)}</u> is ${esc(meName)}’s…?`;   // no pet-name hints
+      photoHtml = p.photo && Math.random() < 0.5
+        ? `<div class="qphoto" style="background-image:url('${p.photo}')"></div>`
+        : `<div class="qphoto" style="background:color-mix(in srgb, ${sc} 15%, transparent);color:${sc}">${esc(initialsOf(p))}</div>`;
+    }
+  }
+  const isRight = answered && optObjs[quiz.picked] && optObjs[quiz.picked].key === q.answerKey;
+  let feedback = '';
+  if (answered){
+    if (q.type === 'closer'){
+      const w = q.options.find(o => o.pid === q.answerKey), l = q.options.find(o => o.pid !== q.answerKey);
+      feedback = `${isRight ? '✅ Sahi jawab!' : '❌ Nope —'} <b>${esc(w.p.name)}</b> is degree ${w.deg}, ${esc(l.p.name)} is ${l.deg}`;
+    } else if (q.type === 'whichphoto'){
+      feedback = isRight ? '✅ Sahi jawab!' : `❌ The highlighted one is <b>${esc(q.e.p.name)}</b>`;
+      if (q.e.p.call) feedback += ` — ${q.e.p.g === 'f' ? 'she’s called' : 'he’s called'} “${esc(q.e.p.call)}”`;
+    } else {
+      feedback = isRight ? '✅ Sahi jawab!' : `❌ It’s <b>${esc(String(q.answerKey))}</b>`;
+      if (q.e.p.call) feedback += ` — you call ${q.e.p.g === 'f' ? 'her' : 'him'} “${esc(q.e.p.call)}”`;
+    }
+  }
   el.innerHTML = `<div class="qcard">
     <div class="qprog">Question ${quiz.i + 1} of ${quiz.qs.length} · Score ${quiz.score}</div>
     ${photoHtml}
     <div class="qq">${prompt}</div>
-    <div class="qopts">${q.options.map((o, i) => {
+    <div class="qopts${grid ? ' qgrid' : ''}">${optObjs.map((o, i) => {
       let cls = '';
       if (answered){
-        if (o === q.answer) cls = 'correct';
+        if (o.key === q.answerKey) cls = 'correct';
         else if (i === quiz.picked) cls = 'wrong';
       }
-      return `<button class="${cls}" data-qi="${i}" ${answered ? 'disabled' : ''}>${esc(o)}</button>`;
+      const style = o.photo ? ` style="background-image:url('${o.photo}')"` : '';
+      return `<button class="${cls}" data-qi="${i}" ${answered ? 'disabled' : ''}${style}>${o.label ? esc(o.label) : ''}</button>`;
     }).join('')}</div>
-    ${answered ? `<div class="qnext"><div class="qsub" style="margin-bottom:8px">${quiz.picked != null && q.options[quiz.picked] === q.answer ? '✅ Sahi jawab!' : `❌ It’s <b>${esc(q.answer)}</b>${p.call ? ` — “${esc(p.call)}”` : ''}`}</div><button class="primary" id="qNext">${quiz.i + 1 === quiz.qs.length ? 'See result' : 'Next →'}</button></div>` : ''}
+    ${answered ? `<div class="qnext"><div class="qsub" style="margin-bottom:8px">${feedback}</div><button class="primary" id="qNext">${quiz.i + 1 === quiz.qs.length ? 'See result' : 'Next →'}</button></div>` : ''}
   </div>`;
   if (!answered){
     el.querySelectorAll('[data-qi]').forEach(b => b.onclick = () => {
       quiz.picked = parseInt(b.dataset.qi);
-      if (q.options[quiz.picked] === q.answer) quiz.score++;
+      if (optObjs[quiz.picked].key === q.answerKey) quiz.score++;
       renderQuizView();
     });
   } else {
