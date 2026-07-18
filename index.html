@@ -1654,6 +1654,25 @@ function renderListView(){
 }
 /* ================= who's-who quiz ================= */
 let quiz = null;   // { qs:[{pid, type, options[], answerIdx}], i, score, picked }
+// answer memory: persists across visits where browser storage exists (website / saved file);
+// falls back to this-session-only memory where it doesn't (e.g. sandboxed previews)
+const safeStore = {
+  ok: (() => { try { const k = '__ft_t'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return true; } catch (e){ return false; } })(),
+  mem: {},
+  get(k){ if (this.ok){ try { return JSON.parse(localStorage.getItem(k)); } catch (e){ return null; } } return this.mem[k] ?? null; },
+  set(k, v){ if (this.ok){ try { localStorage.setItem(k, JSON.stringify(v)); return; } catch (e){} } this.mem[k] = v; }
+};
+let quizMem = safeStore.get('ft-quiz-mem-v1') || { right: {}, wrong: {} };
+if (!quizMem.right) quizMem.right = {};
+if (!quizMem.wrong) quizMem.wrong = {};
+function saveQuizMem(){ safeStore.set('ft-quiz-mem-v1', quizMem); }
+function resetQuizMem(){ quizMem = { right: {}, wrong: {} }; saveQuizMem(); askedRecently = []; renderQuizView(); toast('Quiz memory cleared — fresh start!'); }
+// tier 0 = answered wrong (review soon) · 1 = never asked · 2 = right once · 3 = mastered (right 2+)
+function quizTier(pid){
+  if ((quizMem.wrong[pid] || 0) > 0) return 0;
+  if (!(pid in quizMem.right)) return 1;
+  return (quizMem.right[pid] || 0) >= 2 ? 3 : 2;
+}
 function quizPool(){
   const degrees = computeDegrees();
   const paths = allPathsFromMe();
@@ -1680,10 +1699,22 @@ function startQuiz(){
   const pool = quizPool();
   if (pool.length < 8){ toast('Add a few more named people first'); return; }
   const gens = computeGenerations();
-  pool.forEach(e => e.gen = gens[e.pid] ?? 0);
-  let candidates = pool.filter(e => !askedRecently.includes(e.pid));
-  if (candidates.length < 10){ askedRecently = []; candidates = pool.slice(); }
-  const picked = weightedSample(candidates, Math.min(10, candidates.length));
+  pool.forEach(e => { e.gen = gens[e.pid] ?? 0; e.tier = quizTier(e.pid); });
+  // wrong answers come back with priority; correct ones retire until the fresh pool runs dry
+  const wrongs = pool.filter(e => e.tier === 0 && !askedRecently.slice(-10).includes(e.pid));
+  const fresh = pool.filter(e => e.tier === 1 && !askedRecently.includes(e.pid));
+  const onceRight = pool.filter(e => e.tier === 2 && !askedRecently.includes(e.pid));
+  const mastered = pool.filter(e => e.tier === 3);
+  let revision = false;
+  // up to 3 guaranteed review slots for previously-wrong answers
+  const wrongPick = weightedSample(wrongs, Math.min(3, wrongs.length));
+  let pot = fresh.filter(e => !wrongPick.some(w => w.pid === e.pid));
+  if (pot.length + wrongPick.length < 14) pot = pot.concat(onceRight);
+  if (pot.length + wrongPick.length < 10){ pot = pot.concat(mastered); revision = fresh.length === 0; }
+  if (pot.length + wrongPick.length < 8){ pot = pool.slice(); revision = true; askedRecently = []; }
+  let picked = [...wrongPick, ...weightedSample(pot, Math.min(16, pot.length))];
+  picked = picked.filter((e, i) => picked.findIndex(x => x.pid === e.pid) === i).slice(0, 10);
+  picked = shuffle(picked);   // review questions mixed in, not front-loaded
   picked.forEach(e => askedRecently.push(e.pid));
   if (askedRecently.length > 45) askedRecently = askedRecently.slice(-45);
 
@@ -1735,7 +1766,7 @@ function startQuiz(){
     const b = shuffle(pool).find(x => x.pid !== a.pid && Math.abs(x.deg - a.deg) >= 2);
     if (a && b) qs[i] = { type: 'closer', a, b, options: shuffle([a, b]), answerKey: (a.deg <= b.deg ? a : b).pid };
   }
-  quiz = { qs, i: 0, score: 0, picked: null };
+  quiz = { qs, i: 0, score: 0, picked: null, revision };
   renderQuizView();
 }
 function renderQuizView(){
@@ -1744,13 +1775,21 @@ function renderQuizView(){
   const meP = P()[state.meId];
   const meName = meP ? (meP.name || 'them') : 'them';
   if (!quiz){
+    const pool = quizPool();
+    const nMastered = pool.filter(e => quizTier(e.pid) === 3).length;
+    const nWrong = pool.filter(e => quizTier(e.pid) === 0).length;
+    const memLine = (nMastered || nWrong)
+      ? `<div class="qsub" style="margin-top:8px">🏆 ${nMastered} mastered · 🔁 ${nWrong} to review — it remembers your answers and skips what you already know.</div>`
+      : '';
     el.innerHTML = `<div class="qcard">
       <div class="qbig">🎓</div>
       <div class="qq">How well do you know the ${esc(state.title.replace(/ tree/i, ''))}?</div>
-      <div class="qsub">10 quick questions from the ${esc(meName)}-side inner circle — guess names and rishtas, learn as you go. No pressure, no saving, just practice 😄</div>
-      <div class="qnext" style="display:flex;gap:8px;justify-content:center">
+      <div class="qsub">10 quick questions from the ${esc(meName)}-side inner circle — guess names and rishtas, learn as you go. Wrong answers come back; right answers retire 😄</div>
+      ${memLine}
+      <div class="qnext" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="primary" onclick="startQuiz()" style="padding:10px 22px">Start quiz</button>
         <button onclick="exportCheatSheet()" style="padding:10px 14px">📇 Cheat-sheet</button>
+        ${(nMastered || nWrong) ? '<button onclick="resetQuizMem()" style="padding:10px 14px" title="Forget all past answers">↺ Reset</button>' : ''}
       </div>
     </div>`;
     return;
@@ -1758,10 +1797,14 @@ function renderQuizView(){
   if (quiz.i >= quiz.qs.length){
     const pct = quiz.score / quiz.qs.length;
     const verdict = pct === 1 ? 'Perfect! Ready for the shaadi 🏆' : pct >= 0.7 ? 'Very good! The family will be impressed 🎉' : pct >= 0.4 ? 'Getting there — one more round? 😄' : 'Everyone starts somewhere — again! 💪';
+    const pool = quizPool();
+    const nMastered = pool.filter(e => quizTier(e.pid) === 3).length;
+    const nWrong = pool.filter(e => quizTier(e.pid) === 0).length;
     el.innerHTML = `<div class="qcard">
       <div class="qbig">${pct >= 0.7 ? '🎉' : '📚'}</div>
       <div class="qq">${quiz.score} / ${quiz.qs.length}</div>
-      <div class="qsub">${esc(verdict)}</div>
+      <div class="qsub">${esc(verdict)}${quiz.revision ? '<br>↺ Revision round — you’d already cleared the fresh pool!' : ''}</div>
+      <div class="qsub" style="margin-top:8px">🏆 ${nMastered} of ${pool.length} mastered${nWrong ? ` · 🔁 ${nWrong} waiting for revenge` : ''}</div>
       <div class="qnext" style="display:flex;gap:8px;justify-content:center">
         <button class="primary" onclick="startQuiz()">Play again</button>
         <button onclick="quiz=null;renderQuizView()">Done</button>
@@ -1832,7 +1875,13 @@ function renderQuizView(){
   if (!answered){
     el.querySelectorAll('[data-qi]').forEach(b => b.onclick = () => {
       quiz.picked = parseInt(b.dataset.qi);
-      if (optObjs[quiz.picked].key === q.answerKey) quiz.score++;
+      const right = optObjs[quiz.picked].key === q.answerKey;
+      if (right) quiz.score++;
+      if (q.e){   // remember per-person results (closer-duels don't count)
+        if (right){ quizMem.right[q.e.pid] = (quizMem.right[q.e.pid] || 0) + 1; delete quizMem.wrong[q.e.pid]; }
+        else { quizMem.wrong[q.e.pid] = (quizMem.wrong[q.e.pid] || 0) + 1; quizMem.right[q.e.pid] = 0; }
+        saveQuizMem();
+      }
       renderQuizView();
     });
   } else {
