@@ -1,44 +1,51 @@
 {
-  "_about": "Live board state for the 'Love Letters' game (Vaibhav vs Shail). Reconstructed from screenshot 2026-08-18. Update 'grid' and 'rack' after every move, then run engine.py.",
+  "_about": "Live board state for the 'Love Letters' game (Vaibhav vs Shail). Rebuilt from the full-board screenshot 2026-08-18 (second screenshot, all premiums visible). Update 'grid' and 'rack' after every move, then run engine.py.",
   "size": 11,
   "grid": [
+    "...........",
+    "...........",
     "........V..",
     ".......FEAT",
     "......Z.N..",
     ".....POUT..",
     "....GOO..V.",
     "...PHONETIC",
-    "....INS....",
-    "...........",
-    "...........",
-    "...........",
-    "..........."
+    "...RINS..R.",
+    "...E.....U.",
+    "...X..WAGS."
   ],
   "_premiums_legend": "d=DL (double letter), t=TL (triple letter), D=DW (double word), T=TW (triple word), .=plain. Multipliers apply only to squares a NEW tile is placed on.",
   "premiums": [
-    "D...D......",
-    ".t.........",
-    "..d........",
-    "D........t.",
+    "...T...T...",
+    "...d.t.d...",
+    "..D..D.....",
+    "Td.t.......",
+    "....d......",
+    ".tD......t.",
     "....dt.....",
-    "...........",
-    "D.......Dt.",
-    ".d..t.d..t.",
-    ".T....T..t.",
-    "...........",
-    "..........."
+    "Td.........",
+    "..D.....Dt.",
+    "...d.t.d.t.",
+    "...T..Tt.t."
   ],
   "_premium_notes": [
-    "(4,4)=DL and (4,5)=TL are now covered by G,O; they are back-calculated from the opponent's last move: G,O placed there formed GOO+GHI+POON for exactly 30 points only with G on DL and O on TL.",
-    "(6,9),(7,9),(8,9)=TL are hidden under the app's own VIRUS hint preview tiles; TL on all three is the only premium combination that reproduces the app's quoted 18 points for VIRUS given the displayed tile values (V5 I1 R1 U2 S1). Treat as inferred.",
-    "Rows 9-10 premiums are unknown (empty dark rows in the screenshot); encoded as plain."
+    "Empty-square premiums are transcribed directly from the full-board screenshot: TW(1,4),(1,8),(4,1),(8,1); DL(2,4),(2,8),(4,2),(5,5),(8,2),(10,4),(10,8); TL(2,6),(4,4),(6,2),(6,10),(10,6); DW(3,3),(3,6),(6,3),(9,3),(9,9) [all 1-based row,col].",
+    "The board is NOT symmetric - premiums under tiles are back-calculated from actual move scores and kept for the score-replay selftests: DL(7,5)+TL(7,6) from Shail's 30-pt GO; TL(9,10),(10,10),(11,10) from the app's 18-pt VIRUS hint; DL(10,4)+TW(11,4) from Vaibhav's 53-pt PREX; TW(11,7)+TL(11,8) from Shail's 33-pt WAGS (the TW could be under the G at (11,9) instead of the W - both fit 33; either way it is consumed).",
+    "All four replayed move scores (30, 18, 53, 33) are exact under this map - run engine.py --selftest."
   ],
   "letter_values": {
     "A": 1, "B": 4, "C": 3, "D": 2, "E": 1, "F": 5, "G": 3, "H": 3, "I": 1,
     "J": 10, "K": 5, "L": 2, "M": 4, "N": 2, "O": 1, "P": 4, "Q": 10, "R": 1,
-    "S": 1, "T": 1, "U": 2, "V": 5, "W": 4, "X": 8, "Y": 3, "Z": 11
+    "S": 1, "T": 1, "U": 2, "V": 5, "W": 4, "X": 9, "Z": 11, "Y": 3
   },
-  "_letter_values_note": "Values read directly off tiles in the screenshot (V5 F5 Z11 N2 G3 H3 P4 C3 U2 ...). Letters not yet seen on the board (B D J K L M Q W X Y) default to Words-With-Friends values; correct them when they appear.",
-  "rack": "IRRSSU",
-  "_rack_note": "Rack shows R,I,S plus R,U,S consumed by the app's VIRUS hint preview = I,R,R,S,S,U."
+  "_letter_values_note": "Values read off tiles across both screenshots (V5 F5 Z11 X9 W4 N2 G3 H3 P4 C3 U2 A1 E1 I1 O1 R1 S1 T1). X=9 confirmed by the 53-pt PREX arithmetic. Letters not yet seen (B D J K L M Q Y) default to Words-With-Friends values; correct them when they appear.",
+  "rack": "EEIITTA",
+  "_rack_note": "Current rack after PREX: E,E,I,I,T,T,A (7 tiles).",
+  "_move_log": [
+    "...earlier moves...",
+    "Shail: G,O at (7,5),(7,6) -> GOO+GHI+POON = 30 (score 140 or 146)",
+    "Vaibhav: R,U,S at (9,10),(10,10),(11,10) -> VIRUS = 18",
+    "Shail: W,A,G at (11,7),(11,8),(11,9) -> WAGS = 33 (now 173)",
+    "Vaibhav: R,E,X at (9,4),(10,4),(11,4) -> PREX+RINS = 53 (score ~214)"
+  ]
 }

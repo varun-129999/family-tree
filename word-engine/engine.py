@@ -157,33 +157,51 @@ def describe(play):
     return f"{ws} = {play['score']}  |  place {tiles} [{play['dir']}]"
 
 
-def selftest(bd, words):
-    # 1) Reproduce the app's own hint: VIRUS for 18 (R,U,S down col 10).
-    total, formed = evaluate(bd, words, {(6, 9): "R", (7, 9): "U", (8, 9): "S"}, 1, 0)
-    assert total == 18 and [w for w, _, _ in formed] == ["VIRUS"], (total, formed)
+def strip(bd, cells):
+    out = copy.deepcopy(bd)
+    for r, c in cells:
+        out["grid"][r][c] = "."
+    return out
 
-    # 2) Replay the opponent's last move on the pre-move board:
-    #    G,O at (4,4),(4,5) formed GOO + GHI + POON for exactly 30.
-    bd2 = copy.deepcopy(bd)
-    bd2["grid"][4][4] = "."
-    bd2["grid"][4][5] = "."
-    total, formed = evaluate(bd2, words, {(4, 4): "G", (4, 5): "O"}, 0, 1)
+
+def selftest(bd, words):
+    prex = [(8, 3), (9, 3), (10, 3)]
+    virus = [(8, 9), (9, 9), (10, 9)]
+    wags = [(10, 6), (10, 7), (10, 8)]
+    go = [(6, 4), (6, 5)]
+
+    # Replay the four moves with known app scores, oldest first, each on the
+    # board as it stood at the time.
+    bd_go = strip(bd, go + virus + wags + prex)
+    total, formed = evaluate(bd_go, words, {(6, 4): "G", (6, 5): "O"}, 0, 1)
     assert total == 30 and sorted(w for w, _, _ in formed) == ["GHI", "GOO", "POON"], (total, formed)
 
-    # 3) Cross-word validation: each of these mains is a real word but the
-    #    perpendicular word it creates is not, so the play must be rejected.
-    assert evaluate(bd, words, {(3, 4): "S"}, 0, 1) is None  # SPOUT, but SGHI down
-    assert evaluate(bd, words, {(4, 8): "S"}, 1, 0) is None  # VENTS, but SV across
-    assert evaluate(bd, words, {(4, 3): "U"}, 1, 0) is None  # UP, but UGOO across
-    assert evaluate(bd, words, {(6, 3): "I"}, 1, 0) is None  # PI, but IINS across
-    assert evaluate(bd, words, {(3, 9): "S"}, 0, 1) is None  # POUTS, but SVI down
+    bd_virus = strip(bd, virus + wags + prex)
+    total, formed = evaluate(bd_virus, words, {(8, 9): "R", (9, 9): "U", (10, 9): "S"}, 1, 0)
+    assert total == 18 and [w for w, _, _ in formed] == ["VIRUS"], (total, formed)
 
-    # 4) Positive controls incl. cross-word scoring.
-    total, formed = evaluate(bd, words, {(4, 7): "S"}, 0, 1)
-    assert total == 10 and sorted(w for w, _, _ in formed) == ["GOOS", "USE"], (total, formed)
-    total, formed = evaluate(bd, words, {(7, 5): "S"}, 1, 0)
-    assert total == 9 and [w for w, _, _ in formed] == ["POONS"], (total, formed)
-    print("selftest: all checks passed (VIRUS=18, opponent GO=30, cross-word rejections OK)")
+    bd_wags = strip(bd, wags + prex)
+    total, formed = evaluate(bd_wags, words, {(10, 6): "W", (10, 7): "A", (10, 8): "G"}, 0, 1)
+    assert total == 33 and [w for w, _, _ in formed] == ["WAGS"], (total, formed)
+
+    bd_prex = strip(bd, prex)
+    total, formed = evaluate(bd_prex, words, {(8, 3): "R", (9, 3): "E", (10, 3): "X"}, 1, 0)
+    assert total == 53 and sorted(w for w, _, _ in formed) == ["PREX", "RINS"], (total, formed)
+
+    # Cross-word validation on the current board: real main words that must be
+    # rejected because the perpendicular word they create is not valid.
+    assert evaluate(bd, words, {(8, 7): "E"}, 0, 1) is None  # RINSE, but EE down
+    assert evaluate(bd, words, {(6, 8): "I"}, 1, 0) is None  # TIT down, but IV across
+    assert evaluate(bd, words, {(4, 7): "I"}, 0, 1) is None  # ZIN, but FIU down
+    assert evaluate(bd, words, {(9, 5): "A"}, 1, 0) is None  # POONA is not a word
+    assert evaluate(bd, words, {(9, 8): "A"}, 1, 0) is None  # AG down, but AU across
+
+    # Positive controls incl. cross-word scoring.
+    total, formed = evaluate(bd, words, {(1, 8): "E"}, 1, 0)
+    assert total == 10 and [w for w, _, _ in formed] == ["EVENT"], (total, formed)
+    total, formed = evaluate(bd, words, {(1, 6): "T", (1, 7): "I", (1, 8): "E"}, 0, 1)
+    assert total == 14 and sorted(w for w, _, _ in formed) == ["EVENT", "TIE"], (total, formed)
+    print("selftest: all checks passed (GO=30, VIRUS=18, WAGS=33, PREX=53, cross-word rejections OK)")
 
 
 def main():
