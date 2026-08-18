@@ -1,0 +1,44 @@
+{
+  "_about": "Live board state for the 'Love Letters' game (Vaibhav vs Shail). Reconstructed from screenshot 2026-08-18. Update 'grid' and 'rack' after every move, then run engine.py.",
+  "size": 11,
+  "grid": [
+    "........V..",
+    ".......FEAT",
+    "......Z.N..",
+    ".....POUT..",
+    "....GOO..V.",
+    "...PHONETIC",
+    "....INS....",
+    "...........",
+    "...........",
+    "...........",
+    "..........."
+  ],
+  "_premiums_legend": "d=DL (double letter), t=TL (triple letter), D=DW (double word), T=TW (triple word), .=plain. Multipliers apply only to squares a NEW tile is placed on.",
+  "premiums": [
+    "D...D......",
+    ".t.........",
+    "..d........",
+    "D........t.",
+    "....dt.....",
+    "...........",
+    "D.......Dt.",
+    ".d..t.d..t.",
+    ".T....T..t.",
+    "...........",
+    "..........."
+  ],
+  "_premium_notes": [
+    "(4,4)=DL and (4,5)=TL are now covered by G,O; they are back-calculated from the opponent's last move: G,O placed there formed GOO+GHI+POON for exactly 30 points only with G on DL and O on TL.",
+    "(6,9),(7,9),(8,9)=TL are hidden under the app's own VIRUS hint preview tiles; TL on all three is the only premium combination that reproduces the app's quoted 18 points for VIRUS given the displayed tile values (V5 I1 R1 U2 S1). Treat as inferred.",
+    "Rows 9-10 premiums are unknown (empty dark rows in the screenshot); encoded as plain."
+  ],
+  "letter_values": {
+    "A": 1, "B": 4, "C": 3, "D": 2, "E": 1, "F": 5, "G": 3, "H": 3, "I": 1,
+    "J": 10, "K": 5, "L": 2, "M": 4, "N": 2, "O": 1, "P": 4, "Q": 10, "R": 1,
+    "S": 1, "T": 1, "U": 2, "V": 5, "W": 4, "X": 8, "Y": 3, "Z": 11
+  },
+  "_letter_values_note": "Values read directly off tiles in the screenshot (V5 F5 Z11 N2 G3 H3 P4 C3 U2 ...). Letters not yet seen on the board (B D J K L M Q W X Y) default to Words-With-Friends values; correct them when they appear.",
+  "rack": "IRRSSU",
+  "_rack_note": "Rack shows R,I,S plus R,U,S consumed by the app's VIRUS hint preview = I,R,R,S,S,U."
+}
